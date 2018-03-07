@@ -1,0 +1,181 @@
+//Versie 5.0
+// The notes are in Dutch. I should translate them...
+
+//benodigd: PID, Servo, SPI, IntScheduler, Pixy, IRremote
+#include <Servo.h>
+#include <SPI.h>
+#include <intScheduler.h>
+#include <Pixy.h>
+#include <IRremote.h>
+#include <intPID.h>
+
+//variabele opstellen
+int ServoxPin = 9;
+int ServoyPin = 10;
+int Ymid = 100;
+int Xmid = 160;
+uint16_t blocks;
+int ServoXPositie;
+int ServoYPositie;
+int RECV_PIN = 7;
+
+Pixy pixy;
+Servo ServoX;
+Servo ServoY;
+intScheduler Restart(200);
+intScheduler serial(1000);
+
+#define BUTTON_1 0x202807F
+#define BUTTON_3 0x202C03F
+#define BUTTON_7 0x202E01F
+#define BUTTON_9 0x202906F
+#define BUTTON_5 0x202A05F
+#define Left 0x20208F7
+#define Right 0x2028877
+#define Up 0x202D02F
+#define Down 0x202708F
+#define OK 0x202B04F
+IRrecv irrecv(RECV_PIN);
+decode_results results;
+
+//PID variable
+double Setpointx, Outputx;
+double Setpointy, Outputy;
+double Kp=3, Ki=2, Kd=2;
+double Inputx;
+double Inputy;
+
+//PID voor x en y as maken
+intPID myPIDx(&Inputx, &Outputx, &Setpointx, Kp, Ki, Kd, DIRECT);
+intPID myPIDy(&Inputy, &Outputy, &Setpointy, Kp, Ki, Kd, DIRECT);
+
+void setup() {
+  Serial.begin(9600);
+  pixy.init();
+  ServoX.attach(ServoxPin, 800, 2200);
+  ServoY.attach(ServoyPin, 800, 2200);
+  ServoX.writeMicroseconds(800);
+  ServoY.writeMicroseconds(800);
+  Setpointx = Xmid;
+  Setpointy = Ymid;
+  irrecv.enableIRIn();
+
+  pinMode (RECV_PIN, INPUT);
+
+  //PID inroepen
+  myPIDx.SetMode(AUTOMATIC);
+  myPIDx.SetOutputLimits(-1000,1000);
+  myPIDy.SetMode(AUTOMATIC);
+  myPIDy.SetOutputLimits(-1000,1000);
+}
+
+void loop() {
+   //Informatie over de bal opvragen
+   blocks = pixy.getBlocks();
+
+  if (blocks) {
+   //Coordinaten van de bal een naam geven
+   Inputx = pixy.blocks[0].x;
+   Inputy = pixy.blocks[0].y;
+
+   //De gewenste x en y waarden
+   Setpointy = Ymid;
+   Setpointx = Xmid;
+
+   //PID wordt weer aangezet
+   myPIDx.SetMode(AUTOMATIC);
+   myPIDx.SetOutputLimits(-1000,1000);
+   myPIDy.SetMode(AUTOMATIC);
+   myPIDy.SetOutputLimits(-1000,1000);
+
+   //PID van de assen berekenen
+   myPIDx.Compute();
+   myPIDy.Compute();
+   
+   //Schrijf de afstand tot het midden om naar de stand die de servo's moeten aannemen
+   ServoXPositie = map(Outputx, -1000, 1000, 800, 2200);
+   ServoYPositie = map(Outputy, 1000, -1000, 800, 2200);
+  }
+
+   Xmid = constrain(Xmid, 100, 220);
+   Ymid = constrain(Ymid, 40, 160);
+
+   //Print de ccordinaten van de bal elke seconde
+   if (serial.Available()){
+   Serial.print (Inputx);
+   Serial.print (",");
+   Serial.println (Inputy);
+   }
+
+   //Als er meer dan 0 objects is, reset de timer
+   if (blocks > 0){
+      Restart.Synchronize();
+   }
+
+   //Wanneer er voor 1 seconde lang geen objecten zijn, zet de plaat recht
+   if (Restart.Available()) {
+      ServoXPositie = (2200 + 800) / 2;
+      ServoYPositie = (2200 + 800) / 2;
+
+      //PID wordt uit gezet en gereset
+      myPIDx.SetMode(MANUAL);
+      myPIDy.SetMode(MANUAL);
+      myPIDx.ResetController();
+      myPIDy.ResetController();
+   }
+
+   //Infrarood lezen en balanspunt aanpassen
+   if (irrecv.decode(&results)){
+    if (results.value == BUTTON_1){
+      Serial.println ("BUTTON 1");
+      Ymid = 60;
+      Xmid = 120;
+    }
+    if (results.value == BUTTON_3){
+      Serial.println ("BUTTON 3");
+      Ymid = 60;
+      Xmid = 200;
+    }
+    if (results.value == BUTTON_7){
+      Serial.println ("BUTTON 7");
+      Ymid = 140;
+      Xmid = 120;
+    }
+    if (results.value == BUTTON_9){
+      Serial.println ("BUTTON 9");
+      Ymid = 140;
+      Xmid = 200;
+    }
+    if (results.value == BUTTON_5){
+      Serial.println ("BUTTON_5");
+      Ymid = 100;
+      Xmid = 160;
+    }
+    if (results.value == Left){
+      Serial.println ("Left");
+      Xmid = Xmid-20;
+    }
+    if (results.value == Right){
+      Serial.println ("Right");
+      Xmid = Xmid+20;
+    }
+    if (results.value == Up){
+      Serial.println ("Up");
+      Ymid = Ymid-20;
+    }
+    if (results.value == Down){
+      Serial.println ("Down");
+      Ymid = Ymid+20;
+    }
+    if (results.value == OK){
+      Serial.println ("OK");
+      Ymid = 100;
+      Xmid = 160;
+    }
+    irrecv.resume();
+   }
+
+   //Zet de servo's in de juiste posities
+   ServoX.writeMicroseconds(ServoXPositie);
+   ServoY.writeMicroseconds(ServoYPositie);
+}
