@@ -1,7 +1,6 @@
-//Versie 5.0
-// The notes are in Dutch. I should translate them...
+//Version 5.0
 
-//benodigd: PID, Servo, SPI, IntScheduler, Pixy, IRremote
+//PID, Servo, SPI, IntScheduler, Pixy, IRremote
 #include <Servo.h>
 #include <SPI.h>
 #include <intScheduler.h>
@@ -9,7 +8,7 @@
 #include <IRremote.h>
 #include <intPID.h>
 
-//variabele opstellen
+//Declaring variables
 int ServoxPin = 9;
 int ServoyPin = 10;
 int Ymid = 100;
@@ -38,20 +37,21 @@ intScheduler serial(1000);
 IRrecv irrecv(RECV_PIN);
 decode_results results;
 
-//PID variable
+//PID variables
 double Setpointx, Outputx;
 double Setpointy, Outputy;
 double Kp=3, Ki=2, Kd=2;
 double Inputx;
 double Inputy;
 
-//PID voor x en y as maken
+//Setting up PID systems for the x and y axis
 intPID myPIDx(&Inputx, &Outputx, &Setpointx, Kp, Ki, Kd, DIRECT);
 intPID myPIDy(&Inputy, &Outputy, &Setpointy, Kp, Ki, Kd, DIRECT);
 
+//Setup
 void setup() {
   Serial.begin(9600);
-  pixy.init();
+  pixy.init(); //Camera setup
   ServoX.attach(ServoxPin, 800, 2200);
   ServoY.attach(ServoyPin, 800, 2200);
   ServoX.writeMicroseconds(800);
@@ -62,7 +62,7 @@ void setup() {
 
   pinMode (RECV_PIN, INPUT);
 
-  //PID inroepen
+  //set PID limits
   myPIDx.SetMode(AUTOMATIC);
   myPIDx.SetOutputLimits(-1000,1000);
   myPIDy.SetMode(AUTOMATIC);
@@ -70,61 +70,62 @@ void setup() {
 }
 
 void loop() {
-   //Informatie over de bal opvragen
+   //Get the ball from the camera
    blocks = pixy.getBlocks();
 
   if (blocks) {
-   //Coordinaten van de bal een naam geven
+   //Assign ball coordinates to variables
    Inputx = pixy.blocks[0].x;
    Inputy = pixy.blocks[0].y;
 
-   //De gewenste x en y waarden
+   //Set wanted x and y coordinates (balance point)
    Setpointy = Ymid;
    Setpointx = Xmid;
 
-   //PID wordt weer aangezet
+   //enable PID
    myPIDx.SetMode(AUTOMATIC);
    myPIDx.SetOutputLimits(-1000,1000);
    myPIDy.SetMode(AUTOMATIC);
    myPIDy.SetOutputLimits(-1000,1000);
 
-   //PID van de assen berekenen
+   //PID calculations
    myPIDx.Compute();
    myPIDy.Compute();
    
-   //Schrijf de afstand tot het midden om naar de stand die de servo's moeten aannemen
+   //Translate the PID output to servo positions
    ServoXPositie = map(Outputx, -1000, 1000, 800, 2200);
    ServoYPositie = map(Outputy, 1000, -1000, 800, 2200);
   }
-
+  
+   //constrain the balancepoint to a specific area (If the balance point is too far to the edge then the ball can fall off more easely
    Xmid = constrain(Xmid, 100, 220);
    Ymid = constrain(Ymid, 40, 160);
 
-   //Print de ccordinaten van de bal elke seconde
+   //Print the coordinates of the ball every second
    if (serial.Available()){
    Serial.print (Inputx);
    Serial.print (",");
    Serial.println (Inputy);
    }
 
-   //Als er meer dan 0 objects is, reset de timer
+   //If there are more than 0 objects, reset the timer
    if (blocks > 0){
       Restart.Synchronize();
    }
 
-   //Wanneer er voor 1 seconde lang geen objecten zijn, zet de plaat recht
+   //If there are no object for more than 1 second, reset the plate to a flat position
    if (Restart.Available()) {
       ServoXPositie = (2200 + 800) / 2;
       ServoYPositie = (2200 + 800) / 2;
 
-      //PID wordt uit gezet en gereset
+      //disable PID
       myPIDx.SetMode(MANUAL);
       myPIDy.SetMode(MANUAL);
       myPIDx.ResetController();
       myPIDy.ResetController();
    }
 
-   //Infrarood lezen en balanspunt aanpassen
+   //Read infrared input and set balance point
    if (irrecv.decode(&results)){
     if (results.value == BUTTON_1){
       Serial.println ("BUTTON 1");
@@ -175,7 +176,7 @@ void loop() {
     irrecv.resume();
    }
 
-   //Zet de servo's in de juiste posities
+   //Write the servo positions to the servos
    ServoX.writeMicroseconds(ServoXPositie);
    ServoY.writeMicroseconds(ServoYPositie);
 }
